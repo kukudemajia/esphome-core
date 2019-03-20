@@ -92,11 +92,7 @@ void CSE7766Component::parse_data_() {
   }
 
   uint8_t header1 = this->raw_data_[0];
-  if (header1 == 0xAA) {
-    ESP_LOGW(TAG, "CSE7766 not calibrated!");
-    return;
-  }
-  if ((header1 & 0xF0) == 0xF0 && ((header1 >> 0) & 1) == 1) {
+  if ((header1 & 1) == 1) {
     ESP_LOGW(TAG, "CSE7766 reports abnormal hardware: (0x%02X)", header1);
     ESP_LOGW(TAG, "  Coefficient storage area is abnormal.");
     return;
