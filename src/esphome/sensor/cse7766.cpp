@@ -52,9 +52,13 @@ bool CSE7766Component::check_byte_() {
   uint8_t index = this->raw_data_index_;
   uint8_t byte = this->raw_data_[index];
   if (index == 0) {
-    // Header, usually 0x55, contains data about calibration etc.
-    // this is validated in parse_data_
-    return true;
+    // Header, must be 0x55 (all good) or 0xFX
+    if (byte == 0x55)
+      return true;
+    if ((byte & 0xF0) == 0xF0)
+      return true;
+    ESP_LOGV(TAG, "Invalid Header 1: 0x%02X", byte);
+    return false;
   }
 
   if (index == 1) {
