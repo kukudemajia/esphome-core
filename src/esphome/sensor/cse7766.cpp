@@ -25,6 +25,15 @@ void CSE7766Component::loop() {
   while (this->available() != 0) {
     this->read_byte(&this->raw_data_[this->raw_data_index_]);
     if (!this->check_byte_()) {
+      if (this->raw_data_index_ == 1 && this->raw_data_[0] == 0x5A) {
+        // if we missed a byte somewhere we will constantly bail out
+        // on header2. But because the message size is even we will never
+        // re-sync. solution: manually consume a byte so that the next full packet
+        // can be read.
+        uint8_t temp;
+        this->read_byte(&temp);
+      }
+
       this->raw_data_index_ = 0;
       this->status_set_warning();
       continue;
@@ -89,10 +98,6 @@ void CSE7766Component::parse_data_() {
     return;
   }
 
-  const uint32_t now = micros();
-  const float d = (now - this->last_reading_) / 1000.0f;
-  this->last_reading_ = now;
-
   uint32_t voltage_calib = this->get_24_bit_uint_(2);
   uint32_t voltage_cycle = this->get_24_bit_uint_(5);
   uint32_t current_calib = this->get_24_bit_uint_(8);
@@ -107,7 +112,7 @@ void CSE7766Component::parse_data_() {
       ((header1 >> 3) & 1) == 0) {
     // voltage cycle of serial port outputted is a complete cycle;
     float voltage = voltage_calib / float(voltage_cycle);
-    this->voltage_acc_ += voltage * d;
+    this->read_voltage_ = voltage;
   }
 
   if ((adj >> 5 != 0) && power_cycle != 0 && current_cycle != 0 &&
@@ -115,7 +120,7 @@ void CSE7766Component::parse_data_() {
       ((header1 >> 2) & 1) == 0) {
     // indicates current cycle of serial port outputted is a complete cycle;
     float current = current_calib / float(current_cycle);
-    this->current_acc_ += current * d;
+    this->read_current_ = current;
   }
 
   if ((adj >> 4 != 0) && power_cycle != 0 &&
@@ -123,33 +128,27 @@ void CSE7766Component::parse_data_() {
       ((header1 >> 1) & 1) == 0) {
     // power cycle of serial port outputted is a complete cycle;
     float active_power = power_calib / float(power_cycle);
-    this->power_acc_ += active_power * d;
+    this->read_power_ = active_power;
   }
 }
 void CSE7766Component::update() {
-  const uint32_t now = millis();
-  uint32_t d = now - this->last_update_;
-  this->last_update_ = now;
-  float voltage = this->voltage_acc_ / d;
-  float current = this->current_acc_ / d;
-  float power = this->power_acc_ / d;
-  ESP_LOGD(TAG, "Got voltage=%.1fV current=%.1fA power=%.1fW", voltage, current, power);
+  ESP_LOGD(TAG, "Got voltage=%.1fV current=%.1fA power=%.1fW", this->read_voltage_, this->read_current_,
+           this->read_power_);
 
   // Manually discard unreasonable values
   // CSE766 sends a bunch of invalid data (or packets that are not documented)
   // sometimes, they pass the checksum test and lead to wrong values being published
-  if (this->voltage_ != nullptr && voltage < 500.0)
-    this->voltage_->publish_state(voltage);
-  if (this->current_ != nullptr && current < 50.0)
-    this->current_->publish_state(current);
-  if (this->power_ != nullptr && power < 12500.0)
-    this->power_->publish_state(power);
+  if (this->voltage_ != nullptr)
+    this->voltage_->publish_state(this->read_voltage_);
+  if (this->current_ != nullptr)
+    this->current_->publish_state(this->read_current_);
+  if (this->power_ != nullptr)
+    this->power_->publish_state(this->read_power_);
 
-  this->voltage_acc_ = this->current_acc_ = this->power_acc_ = 0;
-}
-void CSE7766Component::setup() {
-  this->last_reading_ = micros();
-  this->last_update_ = millis();
+  // reset values
+  this->read_voltage_ = 0.0f;
+  this->read_current_ = 0.0f;
+  this->read_power_ = 0.0f;
 }
 uint32_t CSE7766Component::get_24_bit_uint_(uint8_t start_index) {
   return (uint32_t(this->raw_data_[start_index]) << 16) | (uint32_t(this->raw_data_[start_index + 1]) << 8) |
