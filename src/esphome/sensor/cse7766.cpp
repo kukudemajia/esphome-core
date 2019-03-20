@@ -130,6 +130,14 @@ void CSE7766Component::parse_data_() {
     float active_power = power_calib / float(power_cycle);
     this->read_power_ = active_power;
   }
+
+  if (this->read_power_ > 1000.0f) {
+    ESP_LOGW(TAG, "Abnormal CSE776 data:");
+    for (uint8_t i = 0; i < 23; i++) {
+      ESP_LOGW(TAG, "  i=%u: 0b" BYTE_TO_BINARY_PATTERN " (0x%02X)", i, BYTE_TO_BINARY(this->raw_data_[i]),
+                this->raw_data_[i]);
+    }
+  }
 }
 void CSE7766Component::update() {
   ESP_LOGD(TAG, "Got voltage=%.1fV current=%.1fA power=%.1fW", this->read_voltage_, this->read_current_,
