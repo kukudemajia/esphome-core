@@ -57,6 +57,8 @@ bool CSE7766Component::check_byte_() {
       return true;
     if ((byte & 0xF0) == 0xF0)
       return true;
+    if (byte == 0xAA)
+      return true;
     ESP_LOGV(TAG, "Invalid Header 1: 0x%02X", byte);
     return false;
   }
@@ -92,12 +94,6 @@ void CSE7766Component::parse_data_() {
   }
 
   uint8_t header1 = this->raw_data_[0];
-  if (header1 != 0x55 && (header1 & 1) == 1) {
-    ESP_LOGW(TAG, "CSE7766 reports abnormal hardware: (0x%02X)", header1);
-    ESP_LOGW(TAG, "  Coefficient storage area is abnormal.");
-    return;
-  }
-
   uint32_t voltage_calib = this->get_24_bit_uint_(2);
   uint32_t voltage_cycle = this->get_24_bit_uint_(5);
   uint32_t current_calib = this->get_24_bit_uint_(8);
@@ -107,26 +103,48 @@ void CSE7766Component::parse_data_() {
 
   uint8_t adj = this->raw_data_[20];
 
-  if ((adj >> 6 != 0) && voltage_cycle != 0 &&
-      // voltage cycle exceeds range
-      ((header1 >> 3) & 1) == 0) {
-    // voltage cycle of serial port outputted is a complete cycle;
+  bool header_power_ok = true;
+  bool header_voltage_ok = true;
+  bool header_current_ok = true;
+
+  if (header1 == 0x55) {
+    // All good
+  } else if (header1 == 0xAA) {
+    ESP_LOGW(TAG, "CSE7766 reports abnormal hardware: (0x%02X)", header1);
+    ESP_LOGW(TAG, "  Coefficient storage area is abnormal.");
+    return;
+  } else if (header1 & 0xF0) {
+    if (header1 & 0x08) {
+      header_voltage_ok = false;
+    }
+    if (header1 & 0x04) {
+      header_current_ok = false;
+    }
+    if (header1 & 0x02) {
+      header_power_ok = false;
+    }
+  }
+
+  bool voltage_ok = (adj & 0x40) && header_voltage_ok;
+  bool current_ok = (adj & 0x20) && header_current_ok;
+  bool power_ok = (adj & 0x10) && header_power_ok;
+
+  if (!power_ok || power_calib == 0)
+    // power sensor is more accurate than current. If power sensor reads 0
+    // make sure current sensor also reads 0
+    current_ok = false;
+
+  if (voltage_ok) {
     float voltage = voltage_calib / float(voltage_cycle);
     this->read_voltage_ = voltage;
   }
 
-  if ((adj >> 5 != 0) && power_cycle != 0 && current_cycle != 0 &&
-      // current cycle exceeds range
-      ((header1 >> 2) & 1) == 0) {
-    // indicates current cycle of serial port outputted is a complete cycle;
+  if (current_ok) {
     float current = current_calib / float(current_cycle);
     this->read_current_ = current;
   }
 
-  if ((adj >> 4 != 0) && power_cycle != 0 &&
-      // power cycle exceeds range
-      ((header1 >> 1) & 1) == 0) {
-    // power cycle of serial port outputted is a complete cycle;
+  if (power_ok) {
     float active_power = power_calib / float(power_cycle);
     this->read_power_ = active_power;
   }
@@ -143,9 +161,6 @@ void CSE7766Component::update() {
   ESP_LOGD(TAG, "Got voltage=%.1fV current=%.1fA power=%.1fW", this->read_voltage_, this->read_current_,
            this->read_power_);
 
-  // Manually discard unreasonable values
-  // CSE766 sends a bunch of invalid data (or packets that are not documented)
-  // sometimes, they pass the checksum test and lead to wrong values being published
   if (this->voltage_ != nullptr)
     this->voltage_->publish_state(this->read_voltage_);
   if (this->current_ != nullptr)
