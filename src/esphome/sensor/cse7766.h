@@ -31,7 +31,6 @@ class CSE7766Component : public PollingComponent, public UARTDevice {
   void loop() override;
   float get_setup_priority() const override;
   void update() override;
-  void setup() override;
   void dump_config() override;
 
  protected:
@@ -45,11 +44,10 @@ class CSE7766Component : public PollingComponent, public UARTDevice {
   CSE7766VoltageSensor *voltage_{nullptr};
   CSE7766CurrentSensor *current_{nullptr};
   CSE7766PowerSensor *power_{nullptr};
-  float voltage_acc_{0.0};
-  float current_acc_{0.0};
-  float power_acc_{0.0};
-  uint32_t last_reading_{0};
-  uint32_t last_update_{0};
+  /// The voltage reading that the sensor last outputted
+  float read_voltage_{0.0f};
+  float read_current_{0.0f};
+  float read_power_{0.0f};
 };
 
 }  // namespace sensor
