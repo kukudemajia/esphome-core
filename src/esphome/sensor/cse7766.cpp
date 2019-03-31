@@ -115,8 +115,7 @@ void CSE7766Component::parse_data_() {
     this->read_voltage_ = voltage;
   }
 
-  float current = 0.000;
-  current = current_calib / float(current_cycle);
+  float current = current_calib / float(current_cycle);
   this->read_current_ = current;
 
 /*   if ((adj >> 5 != 0) && power_cycle != 0 && current_cycle != 0 &&
@@ -144,7 +143,7 @@ void CSE7766Component::parse_data_() {
   } */
 }
 void CSE7766Component::update() {
-  ESP_LOGD(TAG, "Got voltage=%.1fV current=%.3fA power=%.1fW", this->read_voltage_, this->read_current_,
+  ESP_LOGD(TAG, "Got voltage=%.1fV current=%.1fA power=%.1fW", this->read_voltage_, this->read_current_,
            this->read_power_);
 
   // Manually discard unreasonable values
@@ -159,7 +158,7 @@ void CSE7766Component::update() {
 
   // reset values
   this->read_voltage_ = 0.0f;
-  this->read_current_ = 0.000f;
+  this->read_current_ = 0.0f;
   this->read_power_ = 0.0f;
 }
 uint32_t CSE7766Component::get_24_bit_uint_(uint8_t start_index) {
